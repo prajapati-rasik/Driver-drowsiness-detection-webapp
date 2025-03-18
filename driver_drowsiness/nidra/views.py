@@ -1,41 +1,44 @@
 from django.shortcuts import render
-from django.http import StreamingHttpResponse
-from nidra.camera import VideoCamera
-
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+import cv2
+import base64
+import numpy as np
+from nidra.predictor import Predictor
 
 # Create your views here.
-
 def home(request):
     return render(request, 'home.html')
-
 
 def about(request):
     return render(request, 'about.html')
 
-
 def developer(request):
     return render(request, 'developers.html')
 
-
 def detection_api(request):
-    return render(request, 'camera.html', {'isApiUsed': 1})
+    return render(request, 'camera.html')
 
-
-def detection_model(request):
-    return render(request, 'camera.html', {'isApiUsed': 0})
-
-
-def gen(camera):
-    while True:
-        frame = camera.get_frame()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-
-
+@csrf_exempt
 def video_feed_api(request):
-    return StreamingHttpResponse(gen(VideoCamera(1)), content_type='multipart/x-mixed-replace; boundary=frame')
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            image_data = data.get("image")
 
+            # Convert base64 to image
+            format, imgstr = image_data.split(';base64,')
+            img_bytes = base64.b64decode(imgstr)
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-def video_feed_model(request):
-    print("come to page")
-    return StreamingHttpResponse(gen(VideoCamera(0)), content_type='multipart/x-mixed-replace; boundary=frame')
+            # Create prediction object
+            prediction = Predictor.predict(img)
+
+            return JsonResponse({"prediction": prediction})
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request"}, status=400)
