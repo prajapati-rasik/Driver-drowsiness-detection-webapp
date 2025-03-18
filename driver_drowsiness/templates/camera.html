@@ -1,9 +1,64 @@
-{% extends 'base.html' %} {% block content %}
+{% extends 'base.html' %} 
+{% block content %}
+{% load static %}
 <div style="border: 1px solid black">
-  {% if isApiUsed == 1 %}
-  <img class="feed" src="/video_feed_api" />
-  {% endif %} {% if isApiUsed == 0 %}
-  <img class="feed" src="/video_feed_model" />
-  {% endif %}
+  <video id="video" autoplay></video>
+  <canvas id="canvas" style="display: none;"></canvas>
+  <p style="font-weight: bold;" id="prediction">Detecting...</p>
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const predictionText = document.getElementById("prediction");
+    let score = 0;
+
+    // Start Camera
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => video.srcObject = stream)
+        .catch(error => console.error("Error accessing camera:", error));
+
+    function playAudio() {
+      document.getElementById("audioPlayer").play();
+    }
+
+    function pauseAudio() {
+      document.getElementById("audioPlayer").pause();
+    }
+
+    function captureFrameAndSend() {
+      const context = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = canvas.toDataURL("image/jpeg");
+
+      fetch("/video_feed_api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imageData })
+      })
+      .then(response => response.json())
+      .then(data => {
+          predictionText.innerText = "Prediction: " + data.prediction;
+          if(data.prediction == "Closed"){
+            score++;
+          }else{
+            score--;
+          }
+          if(score < 0){
+            score = 0;
+          }
+          if(score > 1){
+            playAudio();
+          }else{
+            pauseAudio();
+          }
+      })
+      .catch(err => console.error(err));
+    }
+
+    // Send frame every 2 seconds
+    setInterval(captureFrameAndSend, 2000);
+  </script>
 </div>
 {% endblock %}
